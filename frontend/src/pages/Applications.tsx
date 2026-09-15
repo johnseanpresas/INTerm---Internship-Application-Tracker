@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react"
 
 
@@ -32,49 +32,39 @@ type ApplicationStatus =
     | "Rejected"
 
 
-const initialApplications: Application[] = [
-    {
-        id: 1,
-        company: "Google",
-        position: "Software Engineering Intern",
-        status: "Applied",
-        salaryAllowance: "₱15,000/month",
-        location: "Taguig",
-        workSetup: "Hybrid",
-        applicationDate: "2026-09-01",
-    },
-    {
-        id: 2,
-        company: "Microsoft",
-        position: "Software Engineer Intern",
-        status: "Interview",
-        salaryAllowance: "₱15,000/month",
-        location: "Makati",
-        workSetup: "On-site",
-        applicationDate: "2026-09-01",
-    },
-    {
-        id: 3,
-        company: "Canva",
-        position: "Frontend Engineering Intern",
-        status: "Saved",
-        salaryAllowance: "₱15,000/month",
-        location: "Remote",
-        workSetup: "Remote",
-        applicationDate: "2026-09-01",
-    },
-]
-
 function Applications() {
+    useEffect(() => {
+        async function fetchApplications() {
+            try {
+                const response = await fetch(
+                    "http://localhost:3000/api/applications"
+                )
+
+                if (!response.ok) {
+                    throw new Error("Failed to fetch applications")
+                }
+
+                const data: Application[] = await response.json()
+
+                setApplications(data)
+            } catch (error) {
+                console.error("Error fetching applications:", error)
+            }
+        }
+
+        fetchApplications()
+    }, [])
+
+
     const [searchTerm, setSearchTerm] = useState("")
     const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "All">("All")
 
     // Form field state for the Add Application dialog
-    const [applications, setApplications] =
-        useState<Application[]>(initialApplications)
+    const [applications, setApplications] = useState<Application[]>([])
     const [company, setCompany] = useState("")
     const [position, setPosition] = useState("")
     const [salaryAllowance, setSalaryAllowance] = useState("")
+    const [currency, setCurrency] = useState("PHP")
     const [location, setLocation] = useState("")
     const [workSetup, setWorkSetup] = useState("")
     const [status, setStatus] = useState<ApplicationStatus | "">("")
@@ -99,7 +89,7 @@ function Applications() {
 
         return matchesSearch && matchesStatus
     })
-    function handleSaveApplication() {
+    async function handleSaveApplication() {
         // Prevent submission when any required field is missing.
         // Job URL is intentionally excluded because it is optional.
         if (
@@ -108,19 +98,22 @@ function Applications() {
             !location ||
             !workSetup ||
             !status ||
-            !applicationDate ||
-            !salaryAllowance
+            !applicationDate
         ) {
             setError("Please complete all fields.")
             return
         }
 
         if (applicationToEdit) {
-            setApplications((currentApplications) =>
-                currentApplications.map((application) =>
-                    application.id === applicationToEdit.id
-                        ? {
-                            ...application,
+            try {
+                const response = await fetch(
+                    `http://localhost:3000/api/applications/${applicationToEdit.id}`,
+                    {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
                             company,
                             position,
                             location,
@@ -130,60 +123,97 @@ function Applications() {
                             applicationDate,
                             jobUrl,
                             source,
-                        }
-                        : application
+                        }),
+                    }
                 )
-            )
 
-            setCompany("")
-            setPosition("")
-            setLocation("")
-            setWorkSetup("")
-            setStatus("")
-            setSalaryAllowance("")
-            setApplicationDate("")
-            setJobUrl("")
-            setSource("")
-            setApplicationToEdit(null)
-            setIsDialogOpen(false)
+                if (!response.ok) {
+                    throw new Error("Failed to update application")
+                }
 
-            return
+                const updatedApplication: Application = await response.json()
+
+                setApplications((currentApplications) =>
+                    currentApplications.map((application) =>
+                        application.id === updatedApplication.id
+                            ? updatedApplication
+                            : application
+                    )
+                )
+
+                setCompany("")
+                setPosition("")
+                setLocation("")
+                setWorkSetup("")
+                setStatus("")
+                setSalaryAllowance("")
+                setApplicationDate("")
+                setJobUrl("")
+                setSource("")
+                setApplicationToEdit(null)
+                setError("")
+                setIsDialogOpen(false)
+
+                return
+            } catch (error) {
+                console.error("Error updating application:", error)
+                setError("Failed to update application. Please try again.")
+                return
+            }
         }
         // Clear previous validation error
         setError("")
         // Create a new application using the current form values.
         // Date.now() is a temporary ID until the backend/database generates IDs.
-        const newApplication: Application = {
-            id: Date.now(),
-            company,
-            position,
-            status,
-            salaryAllowance,
-            location,
-            workSetup,
-            applicationDate,
-            jobUrl,
-            source,
+        try {
+            const response = await fetch("http://localhost:3000/api/applications", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    company,
+                    position,
+                    status,
+                    location,
+                    workSetup,
+                    applicationDate,
+                    jobUrl,
+                    source,
+                    salaryAllowance,
+                }),
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.message || "Failed to create application")
+            }
+
+            const newApplication: Application = await response.json()
+
+            // Add the application returned by the backend to the table.
+            setApplications([...applications, newApplication])
+
+            setCompany("")
+            setPosition("")
+            setStatus("")
+            setLocation("")
+            setWorkSetup("")
+            setApplicationDate("")
+            setJobUrl("")
+            setSource("")
+            setSalaryAllowance("")
+            setError("")
+            setIsDialogOpen(false)
+        } catch (error) {
+            console.error("Error creating application:", error)
+
+            if (error instanceof Error) {
+                setError(error.message)
+            } else {
+                setError("Failed to create application. Please try again.")
+            }
         }
-        // Add the new application without modifying the existing state array.
-        setApplications((currentApplications) => [
-            ...currentApplications,
-            newApplication,
-        ])
-
-        //Reset form fields after submission
-        setCompany("")
-        setPosition("")
-        setLocation("")
-        setWorkSetup("")
-        setStatus("")
-        setSalaryAllowance("")
-        setApplicationDate("")
-        setJobUrl("")
-        setSource("")
-
-        // Close the Add Application dialog.
-        setIsDialogOpen(false)
     }
     // Edit an existing application by populating the Add Application dialog with the selected application's data.
     function handleStartEdit(application: Application) {
@@ -204,13 +234,31 @@ function Applications() {
 
 
     // Deletes an application from the applications state array based on its ID.
-    function handleDeleteApplication(id: number) {
-        setApplications((currentApplications) =>
-            currentApplications.filter((application) => application.id !== id)
-        )
+    async function handleDeleteApplication(id: number) {
+        try {
+            const response = await fetch(
+                `http://localhost:3000/api/applications/${id}`,
+                {
+                    method: "DELETE",
+                }
+            )
+
+            if (!response.ok) {
+                throw new Error("Failed to delete application")
+            }
+
+            setApplications((currentApplications) =>
+                currentApplications.filter(
+                    (application) => application.id !== id
+                )
+            )
+        } catch (error) {
+            console.error("Error deleting application:", error)
+        }
     }
 
     return (
+
         <div>
             <div className="mb-4 flex gap-3">
                 <Input
@@ -313,6 +361,35 @@ function Applications() {
                                 value={position}
                                 onChange={(event) => setPosition(event.target.value)}
                             />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="currency">
+                                Currency
+                            </Label>
+
+                            <Select
+                                value={currency}
+                                onValueChange={setCurrency}
+                            >
+                                <SelectTrigger id="currency">
+                                    <SelectValue placeholder="Select currency" />
+                                </SelectTrigger>
+
+                                <SelectContent>
+                                    <SelectItem value="PHP">PHP — Philippine Peso (₱)</SelectItem>
+                                    <SelectItem value="USD">USD — US Dollar ($)</SelectItem>
+                                    <SelectItem value="EUR">EUR — Euro (€)</SelectItem>
+                                    <SelectItem value="GBP">GBP — British Pound (£)</SelectItem>
+                                    <SelectItem value="JPY">JPY — Japanese Yen (¥)</SelectItem>
+                                    <SelectItem value="SGD">SGD — Singapore Dollar (S$)</SelectItem>
+                                    <SelectItem value="AUD">AUD — Australian Dollar (A$)</SelectItem>
+                                    <SelectItem value="CAD">CAD — Canadian Dollar (C$)</SelectItem>
+                                    <SelectItem value="CNY">CNY — Chinese Yuan (¥)</SelectItem>
+                                    <SelectItem value="HKD">HKD — Hong Kong Dollar (HK$)</SelectItem>
+                                    <SelectItem value="KRW">KRW — South Korean Won (₩)</SelectItem>
+                                    <SelectItem value="INR">INR — Indian Rupee (₹)</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="salaryAllowance">
