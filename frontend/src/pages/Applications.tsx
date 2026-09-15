@@ -63,7 +63,9 @@ function Applications() {
     const [applications, setApplications] = useState<Application[]>([])
     const [company, setCompany] = useState("")
     const [position, setPosition] = useState("")
-    const [salaryAllowance, setSalaryAllowance] = useState("")
+    const [salaryAmount, setSalaryAmount] = useState("")
+    const [salaryCurrency, setSalaryCurrency] = useState("PHP")
+    const [salaryPeriod, setSalaryPeriod] = useState("MONTH")
     const [currency, setCurrency] = useState("PHP")
     const [location, setLocation] = useState("")
     const [workSetup, setWorkSetup] = useState("")
@@ -119,7 +121,9 @@ function Applications() {
                             location,
                             workSetup,
                             status,
-                            salaryAllowance,
+                            salaryAmount,
+                            salaryCurrency,
+                            salaryPeriod,
                             applicationDate,
                             jobUrl,
                             source,
@@ -128,6 +132,8 @@ function Applications() {
                 )
 
                 if (!response.ok) {
+                    const message = await response.text()
+                    console.error("Update response:", message)
                     throw new Error("Failed to update application")
                 }
 
@@ -141,12 +147,15 @@ function Applications() {
                     )
                 )
 
+                // Reset only AFTER successful update.
                 setCompany("")
                 setPosition("")
                 setLocation("")
                 setWorkSetup("")
                 setStatus("")
-                setSalaryAllowance("")
+                setSalaryAmount("")
+                setSalaryCurrency("PHP")
+                setSalaryPeriod("MONTH")
                 setApplicationDate("")
                 setJobUrl("")
                 setSource("")
@@ -180,7 +189,9 @@ function Applications() {
                     applicationDate,
                     jobUrl,
                     source,
-                    salaryAllowance,
+                    salaryAmount,
+                    salaryCurrency,
+                    salaryPeriod,
                 }),
             })
 
@@ -202,7 +213,9 @@ function Applications() {
             setApplicationDate("")
             setJobUrl("")
             setSource("")
-            setSalaryAllowance("")
+            setSalaryAmount("")
+            setSalaryCurrency("PHP")
+            setSalaryPeriod("MONTH")
             setError("")
             setIsDialogOpen(false)
         } catch (error) {
@@ -222,10 +235,12 @@ function Applications() {
         setCompany(application.company)
         setPosition(application.position)
         setLocation(application.location)
-        setSalaryAllowance(application.salaryAllowance || "")
+        setSalaryAmount(application.salaryAmount || "")
+        setSalaryCurrency(application.salaryCurrency || "PHP")
+        setSalaryPeriod(application.salaryPeriod || "MONTH")
         setWorkSetup(application.workSetup)
         setStatus(application.status)
-        setApplicationDate(application.applicationDate)
+        setApplicationDate(application.applicationDate.slice(0, 10))
         setJobUrl(application.jobUrl || "")
         setSource(application.source || "")
 
@@ -314,7 +329,9 @@ function Applications() {
                             setLocation("")
                             setWorkSetup("")
                             setStatus("")
-                            setSalaryAllowance("")
+                            setSalaryAmount("")
+                            setSalaryCurrency("PHP")
+                            setSalaryPeriod("MONTH")
                             setApplicationDate("")
                             setJobUrl("")
                             setSource("")
@@ -392,16 +409,42 @@ function Applications() {
                             </Select>
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="salaryAllowance">
+                            <Label htmlFor="salaryAmount">
                                 Salary / Allowance
                             </Label>
 
                             <Input
-                                id="salaryAllowance"
-                                placeholder="e.g. ₱15,000/month or Unpaid"
-                                value={salaryAllowance}
-                                onChange={(event) => setSalaryAllowance(event.target.value)}
+                                id="salaryAmount"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="e.g. 20000"
+                                value={salaryAmount}
+                                onChange={(event) => setSalaryAmount(event.target.value)}
                             />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="salaryPeriod">
+                                Pay Period
+                            </Label>
+
+                            <Select
+                                value={salaryPeriod}
+                                onValueChange={setSalaryPeriod}
+                            >
+                                <SelectTrigger id="salaryPeriod">
+                                    <SelectValue placeholder="Select pay period" />
+                                </SelectTrigger>
+
+                                <SelectContent>
+                                    <SelectItem value="HOUR">Per Hour</SelectItem>
+                                    <SelectItem value="DAY">Per Day</SelectItem>
+                                    <SelectItem value="WEEK">Per Week</SelectItem>
+                                    <SelectItem value="MONTH">Per Month</SelectItem>
+                                    <SelectItem value="YEAR">Per Year</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="grid gap-2">
                             <Label htmlFor="location">
@@ -578,7 +621,11 @@ function Applications() {
                                 </td>
 
                                 <td className="px-4 py-3">
-                                    {application.salaryAllowance || "—"}
+                                    {application.salaryAmount
+                                        ? `${application.salaryCurrency} ${Number(
+                                            application.salaryAmount
+                                        ).toLocaleString()} / ${application.salaryPeriod?.toLowerCase()}`
+                                        : "—"}
                                 </td>
 
 
@@ -681,7 +728,9 @@ type Application = {
     company: string
     position: string
     status: ApplicationStatus
-    salaryAllowance?: string
+    salaryAmount?: string
+    salaryCurrency?: string
+    salaryPeriod?: string
     location: string
     workSetup: string
     applicationDate: string
@@ -707,7 +756,7 @@ function getStatusVariant(status: ApplicationStatus) {
 // Converts a stored YYYY-MM-DD date into a readable date.
 // Example: "2026-09-15" → "Sep 15, 2026"
 function formatDate(date: string) {
-    return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
+    return new Date(date).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",

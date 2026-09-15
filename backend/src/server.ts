@@ -1,33 +1,7 @@
 import express from "express"
 import cors from "cors"
+import prisma from "./lib/prisma"
 
-type Application = {
-    id: number
-    company: string
-    position: string
-    status: string
-    location: string
-    workSetup: string
-    applicationDate: string
-    jobUrl?: string
-    source?: string
-    salaryAllowance?: string
-}
-
-// Temporary backend data until PostgreSQL is connected.
-let applications: Application[] = [
-    {
-        id: 1,
-        company: "Google",
-        position: "Software Engineer Intern",
-        status: "Applied",
-        location: "Manila",
-        workSetup: "Hybrid",
-        applicationDate: "2026-09-01",
-        source: "LinkedIn",
-        salaryAllowance: "₱20,000/month",
-    },
-]
 
 const app = express()
 const PORT = 3000
@@ -50,99 +24,164 @@ app.get("/api", (req, res) => {
 })
 
 // Return all internship applications.
-app.get("/api/applications", (req, res) => {
-    res.json(applications)
-})
-// Create a new internship application.
-app.post("/api/applications", (req, res) => {
-    const {
-        company,
-        position,
-        status,
-        location,
-        workSetup,
-        applicationDate,
-        jobUrl,
-        source,
-        salaryAllowance,
-    } = req.body
+app.get("/api/applications", async (req, res) => {
+    try {
+        const applications = await prisma.application.findMany({
+            orderBy: {
+                createdAt: "desc",
+            },
+        })
 
-    // Validate required fields.
-    if (
-        !company ||
-        !position ||
-        !status ||
-        !location ||
-        !workSetup ||
-        !applicationDate
-    ) {
-        return res.status(400).json({
-            message: "Please complete all required fields.",
+        return res.json(applications)
+    } catch (error) {
+        console.error("Error fetching applications:", error)
+
+        return res.status(500).json({
+            message: "Failed to fetch applications.",
         })
     }
+})
 
-    const newApplication: Application = {
-        id: Date.now(),
-        company,
-        position,
-        status,
-        location,
-        workSetup,
-        applicationDate,
-        jobUrl,
-        source,
-        salaryAllowance,
+
+// Create a new internship application.
+app.post("/api/applications", async (req, res) => {
+    try {
+        const {
+            company,
+            position,
+            status,
+            location,
+            workSetup,
+            applicationDate,
+            jobUrl,
+            source,
+            salaryAmount,
+            salaryCurrency,
+            salaryPeriod,
+        } = req.body
+
+        if (
+            !company ||
+            !position ||
+            !status ||
+            !location ||
+            !workSetup ||
+            !applicationDate
+        ) {
+            return res.status(400).json({
+                message: "Please complete all required fields.",
+            })
+        }
+
+        const newApplication = await prisma.application.create({
+            data: {
+                company,
+                position,
+                status,
+                location,
+                workSetup,
+
+                applicationDate: new Date(
+                    `${applicationDate}T00:00:00`
+                ),
+
+                jobUrl: jobUrl || null,
+                source: source || null,
+
+                salaryAmount: salaryAmount
+                    ? Number(salaryAmount)
+                    : null,
+
+                salaryCurrency: salaryCurrency || null,
+                salaryPeriod: salaryPeriod || null,
+            },
+        })
+
+        return res.status(201).json(newApplication)
+    } catch (error) {
+        console.error("Error creating application:", error)
+
+        return res.status(500).json({
+            message: "Failed to create application.",
+        })
     }
-
-    applications.push(newApplication)
-
-    return res.status(201).json(newApplication)
 })
 
 // Update an existing application.
-app.put("/api/applications/:id", (req, res) => {
-    const id = Number(req.params.id)
+app.put("/api/applications/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
 
-    const applicationIndex = applications.findIndex(
-        (application) => application.id === id
-    )
+        const {
+            company,
+            position,
+            status,
+            location,
+            workSetup,
+            applicationDate,
+            jobUrl,
+            source,
+            salaryAmount,
+            salaryCurrency,
+            salaryPeriod,
+        } = req.body
 
-    if (applicationIndex === -1) {
-        return res.status(404).json({
-            message: "Application not found.",
+        const updatedApplication = await prisma.application.update({
+            where: {
+                id,
+            },
+            data: {
+                company,
+                position,
+                status,
+                location,
+                workSetup,
+
+                applicationDate: applicationDate
+                    ? new Date(`${applicationDate}T00:00:00`)
+                    : undefined,
+
+                jobUrl: jobUrl || null,
+                source: source || null,
+
+                salaryAmount: salaryAmount
+                    ? Number(salaryAmount)
+                    : null,
+
+                salaryCurrency: salaryCurrency || null,
+                salaryPeriod: salaryPeriod || null,
+            },
+        })
+
+        return res.json(updatedApplication)
+    } catch (error) {
+        console.error("Error updating application:", error)
+
+        return res.status(500).json({
+            message: "Failed to update application.",
         })
     }
-
-    const updatedApplication: Application = {
-        ...applications[applicationIndex],
-        ...req.body,
-        id,
-    }
-
-    applications[applicationIndex] = updatedApplication
-
-    return res.json(updatedApplication)
 })
 
 // Delete an existing application.
-app.delete("/api/applications/:id", (req, res) => {
-    const id = Number(req.params.id)
+app.delete("/api/applications/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
 
-    const applicationExists = applications.some(
-        (application) => application.id === id
-    )
+        await prisma.application.delete({
+            where: {
+                id,
+            },
+        })
 
-    if (!applicationExists) {
-        return res.status(404).json({
-            message: "Application not found.",
+        return res.status(204).send()
+    } catch (error) {
+        console.error("Error deleting application:", error)
+
+        return res.status(500).json({
+            message: "Failed to delete application.",
         })
     }
-
-    applications = applications.filter(
-        (application) => application.id !== id
-    )
-
-    return res.status(204).send()
 })
 
 
