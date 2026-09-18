@@ -185,6 +185,130 @@ app.delete("/api/applications/:id", async (req, res) => {
 })
 
 
+// Return all interviews with their related application.
+app.get("/api/interviews", async (req, res) => {
+    try {
+        const interviews = await prisma.interview.findMany({
+            include: {
+                application: true,
+            },
+            orderBy: [
+                { date: "asc" },
+                { time: "asc" },
+            ],
+        })
+
+        return res.json(interviews)
+    } catch (error) {
+        console.error("Error fetching interviews:", error)
+
+        return res.status(500).json({
+            message: "Failed to fetch interviews.",
+        })
+    }
+})
+
+
+// Create an interview linked to an existing application.
+app.post("/api/interviews", async (req, res) => {
+    try {
+        const { applicationId, interviewType, date, time, notes } = req.body
+        const id = Number(applicationId)
+
+        if (
+            !Number.isInteger(id) ||
+            id <= 0 ||
+            typeof interviewType !== "string" ||
+            !interviewType.trim() ||
+            typeof date !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+            typeof time !== "string" ||
+            !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ||
+            (notes != null && typeof notes !== "string")
+        ) {
+            return res.status(400).json({
+                message: "Provide an application, interview type, valid date, and time.",
+            })
+        }
+
+        const interviewDate = new Date(`${date}T00:00:00.000Z`)
+
+        if (
+            Number.isNaN(interviewDate.getTime()) ||
+            interviewDate.toISOString().slice(0, 10) !== date
+        ) {
+            return res.status(400).json({
+                message: "Please provide a valid interview date.",
+            })
+        }
+
+        const application = await prisma.application.findUnique({
+            where: { id },
+        })
+
+        if (!application) {
+            return res.status(404).json({
+                message: "Application not found.",
+            })
+        }
+
+        const interview = await prisma.interview.create({
+            data: {
+                applicationId: id,
+                interviewType: interviewType.trim(),
+                date: interviewDate,
+                time,
+                notes: notes?.trim() || null,
+            },
+            include: {
+                application: true,
+            },
+        })
+
+        return res.status(201).json(interview)
+    } catch (error) {
+        console.error("Error creating interview:", error)
+
+        return res.status(500).json({
+            message: "Failed to create interview.",
+        })
+    }
+})
+
+
+// Delete an interview.
+app.delete("/api/interviews/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid interview ID.",
+            })
+        }
+
+        const result = await prisma.interview.deleteMany({
+            where: { id },
+        })
+
+        if (result.count === 0) {
+            return res.status(404).json({
+                message: "Interview not found.",
+            })
+        }
+
+        return res.status(204).send()
+    } catch (error) {
+        console.error("Error deleting interview:", error)
+
+        return res.status(500).json({
+            message: "Failed to delete interview.",
+        })
+    }
+})
+
+
+
 // Start the server and listen for incoming requests.
 app.listen(PORT, () => {
     console.log(`INTerm API running on http://localhost:${PORT}`)

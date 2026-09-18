@@ -13,21 +13,39 @@ datasource db {
 }
 
 model Application {
-  id             Int      @id @default(autoincrement())
-  company        String
-  position       String
-  status         String
-  location       String
-  workSetup      String
+  id              Int      @id @default(autoincrement())
+  company         String
+  position        String
+  status          String
+  location        String
+  workSetup       String
   applicationDate DateTime
 
-  jobUrl         String?
-  source         String?
+  jobUrl          String?
+  source          String?
 
-  salaryAmount   Decimal?
-  salaryCurrency String?
-  salaryPeriod   String?
+  salaryAmount    Decimal?
+  salaryCurrency  String?
+  salaryPeriod    String?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  interviews      Interview[]
+}
+
+model Interview {
+  id            Int      @id @default(autoincrement())
+  applicationId Int
+  interviewType String
+  date          DateTime
+  time          String
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+ application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
 }
