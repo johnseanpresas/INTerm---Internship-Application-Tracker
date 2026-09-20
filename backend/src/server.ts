@@ -307,82 +307,192 @@ app.delete("/api/interviews/:id", async (req, res) => {
     }
 })
 
-// Update an existing interview.
-app.put("/api/interviews/:id", async (req, res) => {
+// Return tasks, with unfinished tasks first.
+app.get("/api/tasks", async (req, res) => {
     try {
-        const id = Number(req.params.id)
-        const { applicationId, interviewType, date, time, notes } = req.body
-        const linkedApplicationId = Number(applicationId)
-
-        if (
-            !Number.isInteger(id) ||
-            id <= 0 ||
-            !Number.isInteger(linkedApplicationId) ||
-            linkedApplicationId <= 0 ||
-            typeof interviewType !== "string" ||
-            !interviewType.trim() ||
-            typeof date !== "string" ||
-            !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-            typeof time !== "string" ||
-            !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ||
-            (notes != null && typeof notes !== "string")
-        ) {
-            return res.status(400).json({
-                message: "Provide valid IDs, interview type, date, and time.",
-            })
-        }
-
-        const interviewDate = new Date(`${date}T00:00:00.000Z`)
-
-        if (
-            Number.isNaN(interviewDate.getTime()) ||
-            interviewDate.toISOString().slice(0, 10) !== date
-        ) {
-            return res.status(400).json({
-                message: "Please provide a valid interview date.",
-            })
-        }
-
-        const existingInterview = await prisma.interview.findUnique({
-            where: { id },
+        const tasks = await prisma.task.findMany({
+            include: {
+                application: true,
+            },
+            orderBy: [
+                { completed: "asc" },
+                { dueDate: { sort: "asc", nulls: "last" } },
+                { createdAt: "desc" },
+            ],
         })
 
-        if (!existingInterview) {
-            return res.status(404).json({
-                message: "Interview not found.",
-            })
-        }
+        return res.json(tasks)
+    } catch (error) {
+        console.error("Error fetching tasks:", error)
 
-        const application = await prisma.application.findUnique({
-            where: { id: linkedApplicationId },
+        return res.status(500).json({
+            message: "Failed to fetch tasks.",
         })
+    }
+})
 
-        if (!application) {
-            return res.status(404).json({
-                message: "Application not found.",
+// Create a task, optionally linked to an application.
+app.post("/api/tasks", async (req, res) => {
+    try {
+        const { title, notes, dueDate, applicationId } = req.body ?? {}
+
+        if (typeof title !== "string" || !title.trim()) {
+            return res.status(400).json({
+                message: "Please enter a task title.",
             })
         }
 
-        const updatedInterview = await prisma.interview.update({
-            where: { id },
+        if (notes != null && typeof notes !== "string") {
+            return res.status(400).json({
+                message: "Notes must be text.",
+            })
+        }
+
+        let parsedDueDate: Date | null = null
+
+        if (dueDate != null && dueDate !== "") {
+            if (
+                typeof dueDate !== "string" ||
+                !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)
+            ) {
+                return res.status(400).json({
+                    message: "Due date must use YYYY-MM-DD.",
+                })
+            }
+
+            parsedDueDate = new Date(`${dueDate}T00:00:00.000Z`)
+
+            if (
+                Number.isNaN(parsedDueDate.getTime()) ||
+                parsedDueDate.toISOString().slice(0, 10) !== dueDate
+            ) {
+                return res.status(400).json({
+                    message: "Please enter a valid due date.",
+                })
+            }
+        }
+
+        let linkedApplicationId: number | null = null
+
+        if (applicationId != null && applicationId !== "") {
+            if (
+                typeof applicationId !== "number" ||
+                !Number.isSafeInteger(applicationId) ||
+                applicationId <= 0
+            ) {
+                return res.status(400).json({
+                    message: "Invalid application ID.",
+                })
+            }
+
+            const application = await prisma.application.findUnique({
+                where: { id: applicationId },
+            })
+
+            if (!application) {
+                return res.status(404).json({
+                    message: "Application not found.",
+                })
+            }
+
+            linkedApplicationId = applicationId
+        }
+
+        const task = await prisma.task.create({
             data: {
-                applicationId: linkedApplicationId,
-                interviewType: interviewType.trim(),
-                date: interviewDate,
-                time,
+                title: title.trim(),
                 notes: notes?.trim() || null,
+                dueDate: parsedDueDate,
+                applicationId: linkedApplicationId,
             },
             include: {
                 application: true,
             },
         })
 
-        return res.json(updatedInterview)
+        return res.status(201).json(task)
     } catch (error) {
-        console.error("Error updating interview:", error)
+        console.error("Error creating task:", error)
 
         return res.status(500).json({
-            message: "Failed to update interview.",
+            message: "Failed to create task.",
+        })
+    }
+})
+
+// Mark a task complete or reopen it.
+app.patch("/api/tasks/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+        const { completed } = req.body ?? {}
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid task ID.",
+            })
+        }
+
+        if (typeof completed !== "boolean") {
+            return res.status(400).json({
+                message: "Completed must be true or false.",
+            })
+        }
+
+        const existingTask = await prisma.task.findUnique({
+            where: { id },
+        })
+
+        if (!existingTask) {
+            return res.status(404).json({
+                message: "Task not found.",
+            })
+        }
+
+        const updatedTask = await prisma.task.update({
+            where: { id },
+            data: { completed },
+            include: {
+                application: true,
+            },
+        })
+
+        return res.json(updatedTask)
+    } catch (error) {
+        console.error("Error updating task:", error)
+
+        return res.status(500).json({
+            message: "Failed to update task.",
+        })
+    }
+})
+
+// Delete a task.
+app.delete("/api/tasks/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid task ID.",
+            })
+        }
+
+        const result = await prisma.task.deleteMany({
+            where: { id },
+        })
+
+        if (result.count === 0) {
+            return res.status(404).json({
+                message: "Task not found.",
+            })
+        }
+
+        return res.status(204).send()
+    } catch (error) {
+        console.error("Error deleting task:", error)
+
+        return res.status(500).json({
+            message: "Failed to delete task.",
         })
     }
 })

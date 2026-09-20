@@ -42,6 +42,13 @@ function interviewTimestamp(interview: Interview) {
     ).getTime()
 }
 
+
+type Task = {
+    id: number
+    completed: boolean
+}
+
+
 function Dashboard() {
     const [applications, setApplications] = useState<Application[]>([])
     const [interviews, setInterviews] = useState<Interview[]>([])
@@ -49,6 +56,7 @@ function Dashboard() {
     const [error, setError] = useState("")
     const [refreshKey, setRefreshKey] = useState(0)
     const [now, setNow] = useState(() => Date.now())
+    const [tasks, setTasks] = useState<Task[]>([])
 
     useEffect(() => {
         const controller = new AbortController()
@@ -58,7 +66,7 @@ function Dashboard() {
             setError("")
 
             try {
-                const [applicationResponse, interviewResponse] =
+                const [applicationResponse, interviewResponse, taskResponse] =
                     await Promise.all([
                         fetch(`${API}/applications`, {
                             signal: controller.signal,
@@ -66,9 +74,16 @@ function Dashboard() {
                         fetch(`${API}/interviews`, {
                             signal: controller.signal,
                         }),
+                        fetch(`${API}/tasks`, {
+                            signal: controller.signal,
+                        }),
                     ])
 
-                if (!applicationResponse.ok || !interviewResponse.ok) {
+                if (
+                    !applicationResponse.ok ||
+                    !interviewResponse.ok ||
+                    !taskResponse.ok
+                ) {
                     throw new Error("Could not load dashboard data.")
                 }
 
@@ -76,11 +91,14 @@ function Dashboard() {
                     await applicationResponse.json()
                 const interviewData: Interview[] =
                     await interviewResponse.json()
+                const taskData: Task[] =
+                    await taskResponse.json()
 
                 if (controller.signal.aborted) return
 
                 setApplications(applicationData)
                 setInterviews(interviewData)
+                setTasks(taskData)
                 setNow(Date.now())
             } catch (error) {
                 if (controller.signal.aborted) return
@@ -100,7 +118,6 @@ function Dashboard() {
 
         return () => controller.abort()
     }, [refreshKey])
-
     // Keep the upcoming list current while this page stays open.
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -136,6 +153,10 @@ function Dashboard() {
         {
             label: "Upcoming Interviews",
             value: upcomingInterviews.length,
+        },
+        {
+            label: "Pending Tasks",
+            value: tasks.filter((task) => !task.completed).length,
         },
     ]
 
@@ -192,7 +213,7 @@ function Dashboard() {
                 </div>
             ) : (
                 <>
-                    <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                         {stats.map((stat) => (
                             <Card key={stat.label}>
                                 <CardHeader>

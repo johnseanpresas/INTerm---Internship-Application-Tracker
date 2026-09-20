@@ -32,6 +32,7 @@ model Application {
   updatedAt       DateTime @updatedAt
 
   interviews      Interview[]
+  tasks           Task[]
 }
 
 model Interview {
@@ -46,6 +47,22 @@ model Interview {
   updatedAt DateTime @updatedAt
 
  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+}
+
+model Task {
+  id            Int      @id @default(autoincrement())
+  title         String
+  notes         String?
+  dueDate       DateTime? @db.Date
+  completed     Boolean  @default(false)
+  applicationId Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
 
   @@index([applicationId])
 }
