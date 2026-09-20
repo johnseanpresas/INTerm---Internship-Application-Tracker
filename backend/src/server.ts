@@ -231,7 +231,161 @@ app.delete("/api/applications/:id", async (req, res) => {
 })
 
 
-// Return all interviews with their related application.
+// Return companies belonging to the signed-in user.
+app.get("/api/companies", async (_req, res) => {
+    try {
+        const companies = await prisma.company.findMany({
+            where: {
+                userId: res.locals.user.id,
+            },
+            orderBy: {
+                name: "asc",
+            },
+        })
+
+        return res.json(companies)
+    } catch (error) {
+        console.error("Error fetching companies:", error)
+
+        return res.status(500).json({
+            message: "Failed to fetch companies.",
+        })
+    }
+})
+
+// Create a company for the signed-in user.
+app.post("/api/companies", async (req, res) => {
+    try {
+        const {
+            name,
+            website,
+            industry,
+            location,
+            notes,
+        } = req.body ?? {}
+
+        if (typeof name !== "string" || !name.trim()) {
+            return res.status(400).json({
+                message: "Please enter a company name.",
+            })
+        }
+
+        const company = await prisma.company.create({
+            data: {
+                userId: res.locals.user.id,
+                name: name.trim(),
+                website: website?.trim() || null,
+                industry: industry?.trim() || null,
+                location: location?.trim() || null,
+                notes: notes?.trim() || null,
+            },
+        })
+
+        return res.status(201).json(company)
+    } catch (error) {
+        console.error("Error creating company:", error)
+
+        return res.status(500).json({
+            message: "Failed to create company.",
+        })
+    }
+})
+
+// Update a company owned by the signed-in user.
+app.put("/api/companies/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid company ID.",
+            })
+        }
+
+        const {
+            name,
+            website,
+            industry,
+            location,
+            notes,
+        } = req.body ?? {}
+
+        if (typeof name !== "string" || !name.trim()) {
+            return res.status(400).json({
+                message: "Please enter a company name.",
+            })
+        }
+
+        const company = await prisma.company.update({
+            where: {
+                id,
+                userId: res.locals.user.id,
+            },
+            data: {
+                name: name.trim(),
+                website: website?.trim() || null,
+                industry: industry?.trim() || null,
+                location: location?.trim() || null,
+                notes: notes?.trim() || null,
+            },
+        })
+
+        return res.json(company)
+    } catch (error) {
+        if (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "P2025"
+        ) {
+            return res.status(404).json({
+                message: "Company not found.",
+            })
+        }
+
+        console.error("Error updating company:", error)
+
+        return res.status(500).json({
+            message: "Failed to update company.",
+        })
+    }
+})
+
+// Delete a company owned by the signed-in user.
+app.delete("/api/companies/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid company ID.",
+            })
+        }
+
+        const result = await prisma.company.deleteMany({
+            where: {
+                id,
+                userId: res.locals.user.id,
+            },
+        })
+
+        if (result.count === 0) {
+            return res.status(404).json({
+                message: "Company not found.",
+            })
+        }
+
+        return res.status(204).send()
+    } catch (error) {
+        console.error("Error deleting company:", error)
+
+        return res.status(500).json({
+            message: "Failed to delete company.",
+        })
+    }
+})
+
+
 // Return interviews belonging to this user's applications.
 app.get("/api/interviews", async (_req, res) => {
     try {

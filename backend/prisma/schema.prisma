@@ -21,15 +21,15 @@ model Application {
   workSetup       String
   applicationDate DateTime
 
-  jobUrl          String?
-  source          String?
+  jobUrl String?
+  source String?
 
-  salaryAmount    Decimal?
-  salaryCurrency  String?
-  salaryPeriod    String?
+  salaryAmount   Decimal?
+  salaryCurrency String?
+  salaryPeriod   String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   interviews Interview[]
   tasks      Task[]
@@ -51,17 +51,17 @@ model Interview {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
- application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([applicationId])
 }
 
 model Task {
-  id            Int      @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   title         String
   notes         String?
   dueDate       DateTime? @db.Date
-  completed     Boolean  @default(false)
+  completed     Boolean   @default(false)
   applicationId Int?
 
   createdAt DateTime @default(now())
@@ -73,15 +73,13 @@ model Task {
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-
   @@index([applicationId])
 }
 
-
 model User {
-  id           Int      @id @default(autoincrement())
+  id           Int    @id @default(autoincrement())
   name         String
-  email        String   @unique
+  email        String @unique
   passwordHash String
 
   createdAt DateTime @default(now())
@@ -90,6 +88,8 @@ model User {
   sessions     Session[]
   applications Application[]
   tasks        Task[]
+
+  companies Company[]
 }
 
 model Session {
@@ -103,4 +103,21 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model Company {
+  id       Int     @id @default(autoincrement())
+  name     String
+  website  String?
+  industry String?
+  location String?
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
