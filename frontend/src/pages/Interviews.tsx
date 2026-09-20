@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Pencil, Plus, Trash2 } from "lucide-react"
-
+import { apiFetch as fetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"

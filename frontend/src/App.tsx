@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom"
 
+import AuthGate from "@/components/AuthGate"
 import Sidebar from "@/components/Sidebar"
 
 import Dashboard from "@/pages/Dashboard"
@@ -11,20 +12,22 @@ import Analytics from "@/pages/Analytics"
 
 function App() {
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
+    <AuthGate>
+      <div className="flex min-h-screen">
+        <Sidebar />
 
-      <main className="flex-1 p-8">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/applications" element={<Applications />} />
-          <Route path="/companies" element={<Companies />} />
-          <Route path="/interviews" element={<Interviews />} />
-          <Route path="/tasks" element={<Tasks />} />
-          <Route path="/analytics" element={<Analytics />} />
-        </Routes>
-      </main>
-    </div>
+        <main className="min-w-0 flex-1 p-8">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/applications" element={<Applications />} />
+            <Route path="/companies" element={<Companies />} />
+            <Route path="/interviews" element={<Interviews />} />
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/analytics" element={<Analytics />} />
+          </Routes>
+        </main>
+      </div>
+    </AuthGate>
   )
 }
 

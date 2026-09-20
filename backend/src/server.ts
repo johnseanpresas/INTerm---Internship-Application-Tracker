@@ -1,6 +1,14 @@
+import type { Request, Response } from "express"
 import express from "express"
 import cors from "cors"
 import prisma from "./lib/prisma"
+import cookieParser from "cookie-parser"
+import authRouter from "./routes/auth"
+import {
+    FRONTEND_ORIGIN,
+    requireAuth,
+    requireTrustedOrigin,
+} from "./lib/auth"
 
 
 const app = express()
@@ -9,11 +17,22 @@ const PORT = 3000
 
 // Allow requests from the React development server
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: FRONTEND_ORIGIN,
+    credentials: true,
 }))
 
-// Allows the server to read JSON sent in request bodies.
-app.use(express.json())
+app.use(express.json({ limit: "16kb" }))
+app.use(cookieParser())
+
+app.use("/api/auth", authRouter)
+
+// All tracker endpoints below this point require a valid login.
+app.use("/api", requireTrustedOrigin, requireAuth)
+
+app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store")
+    next()
+})
 
 
 // Basic API test route.
@@ -27,6 +46,9 @@ app.get("/api", (req, res) => {
 app.get("/api/applications", async (req, res) => {
     try {
         const applications = await prisma.application.findMany({
+            where: {
+                userId: res.locals.user.id,
+            },
             orderBy: {
                 createdAt: "desc",
             },
@@ -75,6 +97,7 @@ app.post("/api/applications", async (req, res) => {
 
         const newApplication = await prisma.application.create({
             data: {
+                userId: res.locals.user.id,
                 company,
                 position,
                 status,
@@ -129,6 +152,7 @@ app.put("/api/applications/:id", async (req, res) => {
         const updatedApplication = await prisma.application.update({
             where: {
                 id,
+                userId: res.locals.user.id,
             },
             data: {
                 company,
@@ -137,9 +161,9 @@ app.put("/api/applications/:id", async (req, res) => {
                 location,
                 workSetup,
 
-                applicationDate: applicationDate
-                    ? new Date(`${applicationDate}T00:00:00`)
-                    : undefined,
+                ...(applicationDate
+                    ? { applicationDate: new Date(`${applicationDate}T00:00:00`) }
+                    : {}),
 
                 jobUrl: jobUrl || null,
                 source: source || null,
@@ -155,6 +179,17 @@ app.put("/api/applications/:id", async (req, res) => {
 
         return res.json(updatedApplication)
     } catch (error) {
+        if (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "P2025"
+        ) {
+            return res.status(404).json({
+                message: "Application not found.",
+            })
+        }
+
         console.error("Error updating application:", error)
 
         return res.status(500).json({
@@ -163,21 +198,32 @@ app.put("/api/applications/:id", async (req, res) => {
     }
 })
 
-// Delete an existing application.
+// Delete an application owned by the signed-in user.
 app.delete("/api/applications/:id", async (req, res) => {
     try {
         const id = Number(req.params.id)
 
-        await prisma.application.delete({
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid application ID.",
+            })
+        }
+
+        const result = await prisma.application.deleteMany({
             where: {
                 id,
+                userId: res.locals.user.id,
             },
         })
 
-        return res.status(204).send()
-    } catch (error) {
-        console.error("Error deleting application:", error)
+        if (result.count === 0) {
+            return res.status(404).json({
+                message: "Application not found.",
+            })
+        }
 
+        return res.status(204).send()
+    } catch {
         return res.status(500).json({
             message: "Failed to delete application.",
         })
@@ -186,9 +232,15 @@ app.delete("/api/applications/:id", async (req, res) => {
 
 
 // Return all interviews with their related application.
-app.get("/api/interviews", async (req, res) => {
+// Return interviews belonging to this user's applications.
+app.get("/api/interviews", async (_req, res) => {
     try {
         const interviews = await prisma.interview.findMany({
+            where: {
+                application: {
+                    userId: res.locals.user.id,
+                },
+            },
             include: {
                 application: true,
             },
@@ -199,25 +251,42 @@ app.get("/api/interviews", async (req, res) => {
         })
 
         return res.json(interviews)
-    } catch (error) {
-        console.error("Error fetching interviews:", error)
-
+    } catch {
         return res.status(500).json({
             message: "Failed to fetch interviews.",
         })
     }
 })
 
-
-// Create an interview linked to an existing application.
-app.post("/api/interviews", async (req, res) => {
+// Shared validation and saving for POST and PUT.
+async function saveInterview(req: Request, res: Response) {
     try {
-        const { applicationId, interviewType, date, time, notes } = req.body
-        const id = Number(applicationId)
+        const userId = res.locals.user.id
+        const editing = req.method === "PUT"
+        const interviewId = Number(req.params.id)
+        const body = req.body ?? {}
+
+        const {
+            applicationId,
+            interviewType,
+            date,
+            time,
+            notes,
+        } = body
 
         if (
-            !Number.isInteger(id) ||
-            id <= 0 ||
+            editing &&
+            (!Number.isSafeInteger(interviewId) || interviewId <= 0)
+        ) {
+            return res.status(400).json({
+                message: "Invalid interview ID.",
+            })
+        }
+
+        if (
+            typeof applicationId !== "number" ||
+            !Number.isSafeInteger(applicationId) ||
+            applicationId <= 0 ||
             typeof interviewType !== "string" ||
             !interviewType.trim() ||
             typeof date !== "string" ||
@@ -242,8 +311,15 @@ app.post("/api/interviews", async (req, res) => {
             })
         }
 
+        // The selected application must also belong to this user.
         const application = await prisma.application.findUnique({
-            where: { id },
+            where: {
+                id: applicationId,
+                userId,
+            },
+            select: {
+                id: true,
+            },
         })
 
         if (!application) {
@@ -252,14 +328,38 @@ app.post("/api/interviews", async (req, res) => {
             })
         }
 
-        const interview = await prisma.interview.create({
-            data: {
-                applicationId: id,
-                interviewType: interviewType.trim(),
-                date: interviewDate,
-                time,
-                notes: notes?.trim() || null,
+        const data = {
+            interviewType: interviewType.trim(),
+            date: interviewDate,
+            time,
+            notes: notes?.trim() || null,
+            application: {
+                connect: {
+                    id: applicationId,
+                    userId,
+                },
             },
+        }
+
+        if (editing) {
+            const interview = await prisma.interview.update({
+                where: {
+                    id: interviewId,
+                    application: {
+                        userId,
+                    },
+                },
+                data,
+                include: {
+                    application: true,
+                },
+            })
+
+            return res.json(interview)
+        }
+
+        const interview = await prisma.interview.create({
+            data,
             include: {
                 application: true,
             },
@@ -267,28 +367,44 @@ app.post("/api/interviews", async (req, res) => {
 
         return res.status(201).json(interview)
     } catch (error) {
-        console.error("Error creating interview:", error)
+        if (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "P2025"
+        ) {
+            return res.status(404).json({
+                message: "Interview or application not found.",
+            })
+        }
 
         return res.status(500).json({
-            message: "Failed to create interview.",
+            message: "Failed to save interview.",
         })
     }
-})
+}
 
+app.post("/api/interviews", saveInterview)
+app.put("/api/interviews/:id", saveInterview)
 
-// Delete an interview.
+// Delete only interviews belonging to this user's applications.
 app.delete("/api/interviews/:id", async (req, res) => {
     try {
         const id = Number(req.params.id)
 
-        if (!Number.isInteger(id) || id <= 0) {
+        if (!Number.isSafeInteger(id) || id <= 0) {
             return res.status(400).json({
                 message: "Invalid interview ID.",
             })
         }
 
         const result = await prisma.interview.deleteMany({
-            where: { id },
+            where: {
+                id,
+                application: {
+                    userId: res.locals.user.id,
+                },
+            },
         })
 
         if (result.count === 0) {
@@ -298,19 +414,20 @@ app.delete("/api/interviews/:id", async (req, res) => {
         }
 
         return res.status(204).send()
-    } catch (error) {
-        console.error("Error deleting interview:", error)
-
+    } catch {
         return res.status(500).json({
             message: "Failed to delete interview.",
         })
     }
 })
 
-// Return tasks, with unfinished tasks first.
-app.get("/api/tasks", async (req, res) => {
+// Return this user's tasks, with unfinished tasks first.
+app.get("/api/tasks", async (_req, res) => {
     try {
         const tasks = await prisma.task.findMany({
+            where: {
+                userId: res.locals.user.id,
+            },
             include: {
                 application: true,
             },
@@ -322,9 +439,7 @@ app.get("/api/tasks", async (req, res) => {
         })
 
         return res.json(tasks)
-    } catch (error) {
-        console.error("Error fetching tasks:", error)
-
+    } catch {
         return res.status(500).json({
             message: "Failed to fetch tasks.",
         })
@@ -386,7 +501,10 @@ app.post("/api/tasks", async (req, res) => {
             }
 
             const application = await prisma.application.findUnique({
-                where: { id: applicationId },
+                where: {
+                    id: applicationId,
+                    userId: res.locals.user.id,
+                },
             })
 
             if (!application) {
@@ -400,6 +518,7 @@ app.post("/api/tasks", async (req, res) => {
 
         const task = await prisma.task.create({
             data: {
+                userId: res.locals.user.id,
                 title: title.trim(),
                 notes: notes?.trim() || null,
                 dueDate: parsedDueDate,
@@ -420,7 +539,7 @@ app.post("/api/tasks", async (req, res) => {
     }
 })
 
-// Mark a task complete or reopen it.
+// Complete or reopen a task owned by the signed-in user.
 app.patch("/api/tasks/:id", async (req, res) => {
     try {
         const id = Number(req.params.id)
@@ -438,18 +557,11 @@ app.patch("/api/tasks/:id", async (req, res) => {
             })
         }
 
-        const existingTask = await prisma.task.findUnique({
-            where: { id },
-        })
-
-        if (!existingTask) {
-            return res.status(404).json({
-                message: "Task not found.",
-            })
-        }
-
         const updatedTask = await prisma.task.update({
-            where: { id },
+            where: {
+                id,
+                userId: res.locals.user.id,
+            },
             data: { completed },
             include: {
                 application: true,
@@ -458,7 +570,16 @@ app.patch("/api/tasks/:id", async (req, res) => {
 
         return res.json(updatedTask)
     } catch (error) {
-        console.error("Error updating task:", error)
+        if (
+            typeof error === "object" &&
+            error !== null &&
+            "code" in error &&
+            error.code === "P2025"
+        ) {
+            return res.status(404).json({
+                message: "Task not found.",
+            })
+        }
 
         return res.status(500).json({
             message: "Failed to update task.",
@@ -478,7 +599,10 @@ app.delete("/api/tasks/:id", async (req, res) => {
         }
 
         const result = await prisma.task.deleteMany({
-            where: { id },
+            where: {
+                id,
+                userId: res.locals.user.id,
+            },
         })
 
         if (result.count === 0) {
