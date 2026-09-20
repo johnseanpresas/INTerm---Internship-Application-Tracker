@@ -307,7 +307,85 @@ app.delete("/api/interviews/:id", async (req, res) => {
     }
 })
 
+// Update an existing interview.
+app.put("/api/interviews/:id", async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+        const { applicationId, interviewType, date, time, notes } = req.body
+        const linkedApplicationId = Number(applicationId)
 
+        if (
+            !Number.isInteger(id) ||
+            id <= 0 ||
+            !Number.isInteger(linkedApplicationId) ||
+            linkedApplicationId <= 0 ||
+            typeof interviewType !== "string" ||
+            !interviewType.trim() ||
+            typeof date !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+            typeof time !== "string" ||
+            !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ||
+            (notes != null && typeof notes !== "string")
+        ) {
+            return res.status(400).json({
+                message: "Provide valid IDs, interview type, date, and time.",
+            })
+        }
+
+        const interviewDate = new Date(`${date}T00:00:00.000Z`)
+
+        if (
+            Number.isNaN(interviewDate.getTime()) ||
+            interviewDate.toISOString().slice(0, 10) !== date
+        ) {
+            return res.status(400).json({
+                message: "Please provide a valid interview date.",
+            })
+        }
+
+        const existingInterview = await prisma.interview.findUnique({
+            where: { id },
+        })
+
+        if (!existingInterview) {
+            return res.status(404).json({
+                message: "Interview not found.",
+            })
+        }
+
+        const application = await prisma.application.findUnique({
+            where: { id: linkedApplicationId },
+        })
+
+        if (!application) {
+            return res.status(404).json({
+                message: "Application not found.",
+            })
+        }
+
+        const updatedInterview = await prisma.interview.update({
+            where: { id },
+            data: {
+                applicationId: linkedApplicationId,
+                interviewType: interviewType.trim(),
+                date: interviewDate,
+                time,
+                notes: notes?.trim() || null,
+            },
+            include: {
+                application: true,
+            },
+        })
+
+        return res.json(updatedInterview)
+    } catch (error) {
+        console.error("Error updating interview:", error)
+
+        return res.status(500).json({
+            message: "Failed to update interview.",
+        })
+    }
+})
 
 // Start the server and listen for incoming requests.
 app.listen(PORT, () => {

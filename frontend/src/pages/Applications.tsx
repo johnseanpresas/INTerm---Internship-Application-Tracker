@@ -386,7 +386,7 @@ function Applications() {
 
                             <Select
                                 value={currency}
-                                onValueChange={setCurrency}
+                                onValueChange={(value) => setCurrency(value ?? "")}
                             >
                                 <SelectTrigger id="currency">
                                     <SelectValue placeholder="Select currency" />
@@ -431,7 +431,7 @@ function Applications() {
 
                             <Select
                                 value={salaryPeriod}
-                                onValueChange={setSalaryPeriod}
+                                onValueChange={(value) => setSalaryPeriod(value ?? "")}
                             >
                                 <SelectTrigger id="salaryPeriod">
                                     <SelectValue placeholder="Select pay period" />
@@ -490,7 +490,7 @@ function Applications() {
 
                             <Select
                                 value={workSetup}
-                                onValueChange={setWorkSetup}
+                                onValueChange={(value) => setWorkSetup(value ?? "")}
                             >
                                 <SelectTrigger id="workSetup">
                                     <SelectValue placeholder="Select work setup" />

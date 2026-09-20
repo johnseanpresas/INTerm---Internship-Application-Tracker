@@ -1,362 +1,373 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
 import {
     Dialog,
     DialogContent,
     DialogDescription,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+const API = "http://localhost:3000/api"
 
-
-
-type Interview = {
+type Application = {
     id: number
     company: string
     position: string
+}
+
+type Interview = {
+    id: number
+    applicationId: number
     interviewType: string
     date: string
     time: string
-    notes?: string
+    notes: string | null
+    application: Application
 }
 
-// Temporary interview data until we connect the application to a database.
-const initialInterviews: Interview[] = [
-    {
-        id: 1,
-        company: "Google",
-        position: "Software Engineer Intern",
-        interviewType: "Technical Interview",
-        date: "2026-09-20",
-        time: "10:00 AM",
-        notes: "Prepare data structures and algorithms",
-    },
-    {
-        id: 2,
-        company: "Canva",
-        position: "Frontend Developer Intern",
-        interviewType: "HR Interview",
-        date: "2026-09-23",
-        time: "2:00 PM",
-    },
+type InterviewForm = {
+    applicationId: string
+    interviewType: string
+    date: string
+    time: string
+    notes: string
+}
+
+const emptyForm: InterviewForm = {
+    applicationId: "",
+    interviewType: "",
+    date: "",
+    time: "",
+    notes: "",
+}
+
+const interviewTypes = [
+    "HR Interview",
+    "Technical Interview",
+    "Hiring Manager Interview",
+    "Final Interview",
 ]
 
+const selectClass =
+    "h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+
+function sortInterviews(interviews: Interview[]) {
+    return [...interviews].sort((a, b) =>
+        `${a.date.slice(0, 10)}T${a.time}`.localeCompare(
+            `${b.date.slice(0, 10)}T${b.time}`
+        )
+    )
+}
+
+// Read the API's error message when available.
+async function getErrorMessage(response: Response) {
+    const data = await response.json().catch(() => null)
+
+    return typeof data?.message === "string"
+        ? data.message
+        : `Request failed (${response.status}).`
+}
+
 function Interviews() {
-    const [interviews, setInterviews] =
-        useState<Interview[]>(initialInterviews)
-    // Form state to manage the input values for adding a new interview
-    const [company, setCompany] = useState("")
-    const [position, setPosition] = useState("")
-    const [interviewType, setInterviewType] = useState("")
-    const [date, setDate] = useState("")
-    const [time, setTime] = useState("")
-    const [notes, setNotes] = useState("")
+    const [interviews, setInterviews] = useState<Interview[]>([])
+    const [applications, setApplications] = useState<Application[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [loadError, setLoadError] = useState("")
+
+    const [form, setForm] = useState<InterviewForm>(emptyForm)
     const [isDialogOpen, setIsDialogOpen] = useState(false)
-    // Error state to handle form validation errors
-    const [error, setError] = useState("")
     const [interviewToEdit, setInterviewToEdit] =
         useState<Interview | null>(null)
+    const [isSaving, setIsSaving] = useState(false)
+    const [saveError, setSaveError] = useState("")
 
     const [interviewToDelete, setInterviewToDelete] =
         useState<Interview | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+    const [deleteError, setDeleteError] = useState("")
 
-    function handleSaveInterview() {
-        // Prevent submission if any required field is missing.
-        // Notes are optional.
-        if (!company || !position || !interviewType || !date || !time) {
-            setError("Please complete all required fields.")
-            return
-        }
+    useEffect(() => {
+        const controller = new AbortController()
 
-        setError("")
-        // If we're editing an existing interview, update it in the list.
-        if (interviewToEdit) {
-            setInterviews((currentInterviews) =>
-                currentInterviews.map((interview) =>
-                    interview.id === interviewToEdit.id
-                        ? {
-                            ...interview,
-                            company,
-                            position,
-                            interviewType,
-                            date,
-                            time,
-                            notes,
-                        }
-                        : interview
+        async function loadData() {
+            try {
+                const [interviewResponse, applicationResponse] =
+                    await Promise.all([
+                        fetch(`${API}/interviews`, {
+                            signal: controller.signal,
+                        }),
+                        fetch(`${API}/applications`, {
+                            signal: controller.signal,
+                        }),
+                    ])
+
+                if (!interviewResponse.ok) {
+                    throw new Error(
+                        await getErrorMessage(interviewResponse)
+                    )
+                }
+
+                if (!applicationResponse.ok) {
+                    throw new Error(
+                        await getErrorMessage(applicationResponse)
+                    )
+                }
+
+                const interviewData: Interview[] =
+                    await interviewResponse.json()
+                const applicationData: Application[] =
+                    await applicationResponse.json()
+
+                if (controller.signal.aborted) return
+
+                setInterviews(sortInterviews(interviewData))
+                setApplications(applicationData)
+            } catch (error) {
+                if (controller.signal.aborted) return
+
+                setLoadError(
+                    error instanceof Error
+                        ? error.message
+                        : "Could not load data. Please refresh."
                 )
-            )
-            // Clear the form and reset the editing state.
-            setCompany("")
-            setPosition("")
-            setInterviewType("")
-            setDate("")
-            setTime("")
-            setNotes("")
-            setInterviewToEdit(null)
-            setIsDialogOpen(false)
-
-            return
+            } finally {
+                if (!controller.signal.aborted) {
+                    setIsLoading(false)
+                }
+            }
         }
 
-        // Create the new interview from the current form values.
-        const newInterview: Interview = {
-            id: Date.now(),
-            company,
-            position,
-            interviewType,
-            date,
-            time,
-            notes,
-        }
+        void loadData()
+        return () => controller.abort()
+    }, [])
 
-        // Add the new interview to the existing list.
-        setInterviews((currentInterviews) => [
-            ...currentInterviews,
-            newInterview,
-        ])
-
-        // Clear the form after a successful submission.
-        setCompany("")
-        setPosition("")
-        setInterviewType("")
-        setDate("")
-        setTime("")
-        setNotes("")
-
-        // Close the dialog.
-        setIsDialogOpen(false)
+    function updateForm(field: keyof InterviewForm, value: string) {
+        setForm((current) => ({ ...current, [field]: value }))
     }
-    function handleStartEdit(interview: Interview) {
-        setInterviewToEdit(interview)
 
-        setCompany(interview.company)
-        setPosition(interview.position)
-        setInterviewType(interview.interviewType)
-        setDate(interview.date)
-        setTime(interview.time)
-        setNotes(interview.notes || "")
-
+    function openAddDialog() {
+        setInterviewToEdit(null)
+        setForm({ ...emptyForm })
+        setSaveError("")
         setIsDialogOpen(true)
     }
 
-    function handleDeleteInterview(id: number) {
-        setInterviews((currentInterviews) =>
-            currentInterviews.filter((interview) => interview.id !== id)
-        )
+    function openEditDialog(interview: Interview) {
+        setInterviewToEdit(interview)
+        setForm({
+            applicationId: String(interview.applicationId),
+            interviewType: interview.interviewType,
+            date: interview.date.slice(0, 10),
+            time: interview.time,
+            notes: interview.notes ?? "",
+        })
+        setSaveError("")
+        setIsDialogOpen(true)
     }
+
+    async function handleSaveInterview() {
+        if (isSaving) return
+
+        setIsSaving(true)
+        setSaveError("")
+
+        try {
+            const url = interviewToEdit
+                ? `${API}/interviews/${interviewToEdit.id}`
+                : `${API}/interviews`
+
+            const response = await fetch(url, {
+                method: interviewToEdit ? "PUT" : "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    ...form,
+                    applicationId: Number(form.applicationId),
+                }),
+            })
+
+            if (!response.ok) {
+                throw new Error(await getErrorMessage(response))
+            }
+
+            const savedInterview: Interview = await response.json()
+
+            setInterviews((current) =>
+                sortInterviews([
+                    ...current.filter(
+                        (interview) => interview.id !== savedInterview.id
+                    ),
+                    savedInterview,
+                ])
+            )
+
+            setIsDialogOpen(false)
+            setInterviewToEdit(null)
+            setForm({ ...emptyForm })
+        } catch (error) {
+            setSaveError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not save the interview. Please try again."
+            )
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    async function handleDeleteInterview() {
+        if (!interviewToDelete || isDeleting) return
+
+        const id = interviewToDelete.id
+        setIsDeleting(true)
+        setDeleteError("")
+
+        try {
+            const response = await fetch(`${API}/interviews/${id}`, {
+                method: "DELETE",
+            })
+
+            if (!response.ok && response.status !== 404) {
+                throw new Error(await getErrorMessage(response))
+            }
+
+            setInterviews((current) =>
+                current.filter((interview) => interview.id !== id)
+            )
+            setInterviewToDelete(null)
+        } catch (error) {
+            setDeleteError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not delete the interview. Please try again."
+            )
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
     return (
         <div>
-            {/* Page header */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold">Interviews</h1>
                     <p className="text-muted-foreground">
-                        Manage your upcoming internship interviews.
+                        Manage interviews for your applications.
                     </p>
                 </div>
-                {/* Add interview dialog */}
-                <Dialog
-                    open={isDialogOpen}
-                    onOpenChange={(open) => {
-                        setIsDialogOpen(open)
 
-                        if (!open) {
-                            setInterviewToEdit(null)
-                            setCompany("")
-                            setPosition("")
-                            setInterviewType("")
-                            setDate("")
-                            setTime("")
-                            setNotes("")
-                            setError("")
-                        }
-                    }}
+                <Button
+                    onClick={openAddDialog}
+                    disabled={
+                        isLoading ||
+                        Boolean(loadError) ||
+                        applications.length === 0
+                    }
                 >
-                    <DialogTrigger render={<Button />}>
-                        <Plus className="h-4 w-4" />
-                        Add Interview
-                    </DialogTrigger>
-
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>
-                                {interviewToEdit ? "Edit Interview" : "Add Interview"}
-                            </DialogTitle>
-                        </DialogHeader>
-
-                        <div className="grid gap-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="company">Company</Label>
-                                <Input
-                                    id="company"
-                                    value={company}
-                                    onChange={(event) => setCompany(event.target.value)}
-                                    placeholder="e.g. Google"
-                                />
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="position">Position</Label>
-                                <Input
-                                    id="position"
-                                    value={position}
-                                    onChange={(event) => setPosition(event.target.value)}
-                                    placeholder="e.g. Software Engineer Intern"
-                                />
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label>Interview Type</Label>
-
-                                <Select
-                                    value={interviewType}
-                                    onValueChange={setInterviewType}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select interview type" />
-                                    </SelectTrigger>
-
-                                    <SelectContent>
-                                        <SelectItem value="HR Interview">
-                                            HR Interview
-                                        </SelectItem>
-
-                                        <SelectItem value="Technical Interview">
-                                            Technical Interview
-                                        </SelectItem>
-
-                                        <SelectItem value="Hiring Manager Interview">
-                                            Hiring Manager Interview
-                                        </SelectItem>
-
-                                        <SelectItem value="Final Interview">
-                                            Final Interview
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="date">Date</Label>
-                                <Input
-                                    id="date"
-                                    type="date"
-                                    value={date}
-                                    onChange={(event) => setDate(event.target.value)}
-                                />
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="time">Time</Label>
-                                <Input
-                                    id="time"
-                                    type="time"
-                                    value={time}
-                                    onChange={(event) => setTime(event.target.value)}
-                                />
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="notes">Notes</Label>
-                                <Input
-                                    id="notes"
-                                    value={notes}
-                                    onChange={(event) => setNotes(event.target.value)}
-                                    placeholder="Optional interview notes"
-                                />
-                            </div>
-                            {error && (
-                                <p className="text-sm text-destructive">
-                                    {error}
-                                </p>
-                            )}
-                            <Button onClick={handleSaveInterview}>
-                                {interviewToEdit ? "Save Changes" : "Save Interview"}
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-
-
+                    <Plus className="h-4 w-4" />
+                    Add Interview
+                </Button>
             </div>
 
-            {/* Interview table */}
-            <div className="overflow-hidden rounded-lg border">
-                <table className="w-full">
+            {isLoading && (
+                <p className="mb-4 text-muted-foreground">
+                    Loading interviews...
+                </p>
+            )}
+
+            {loadError && (
+                <p role="alert" className="mb-4 text-destructive">
+                    {loadError} Check that the backend is running, then refresh.
+                </p>
+            )}
+
+            {!isLoading && !loadError && applications.length === 0 && (
+                <p className="mb-4 text-muted-foreground">
+                    Add an application on the Applications page first.
+                </p>
+            )}
+
+            <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                         <tr>
-                            <th className="px-4 py-3 text-left">Company</th>
-                            <th className="px-4 py-3 text-left">Position</th>
-                            <th className="px-4 py-3 text-left">Type</th>
-                            <th className="px-4 py-3 text-left">Date</th>
-                            <th className="px-4 py-3 text-left">Time</th>
-                            <th className="px-4 py-3 text-left">Notes</th>
-                            <th className="px-4 py-3 text-left">
-                                Actions
-                            </th>
+                            {[
+                                "Company",
+                                "Position",
+                                "Type",
+                                "Date",
+                                "Time",
+                                "Notes",
+                                "Actions",
+                            ].map((heading) => (
+                                <th
+                                    key={heading}
+                                    className="px-4 py-3 text-left"
+                                >
+                                    {heading}
+                                </th>
+                            ))}
                         </tr>
                     </thead>
 
                     <tbody>
+                        {!isLoading &&
+                            !loadError &&
+                            interviews.length === 0 && (
+                                <tr>
+                                    <td
+                                        colSpan={7}
+                                        className="px-4 py-8 text-center text-muted-foreground"
+                                    >
+                                        No interviews scheduled yet.
+                                    </td>
+                                </tr>
+                            )}
+
                         {interviews.map((interview) => (
-                            <tr
-                                key={interview.id}
-                                className="border-t"
-                            >
+                            <tr key={interview.id} className="border-t">
                                 <td className="px-4 py-3">
-                                    {interview.company}
+                                    {interview.application.company}
                                 </td>
-
-
                                 <td className="px-4 py-3">
-                                    {interview.position}
+                                    {interview.application.position}
                                 </td>
-
                                 <td className="px-4 py-3">
                                     {interview.interviewType}
                                 </td>
-
-                                <td className="px-4 py-3">
-                                    {interview.date}
+                                <td className="whitespace-nowrap px-4 py-3">
+                                    {interview.date.slice(0, 10)}
                                 </td>
-
                                 <td className="px-4 py-3">
                                     {interview.time}
                                 </td>
-
                                 <td className="px-4 py-3">
                                     {interview.notes || "—"}
                                 </td>
-
                                 <td className="px-4 py-3">
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex gap-1">
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            onClick={() => handleStartEdit(interview)}
+                                            aria-label={`Edit interview with ${interview.application.company}`}
+                                            onClick={() =>
+                                                openEditDialog(interview)
+                                            }
                                         >
                                             <Pencil className="h-4 w-4" />
                                         </Button>
-
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            onClick={() => setInterviewToDelete(interview)}
+                                            aria-label={`Delete interview with ${interview.application.company}`}
+                                            onClick={() => {
+                                                setDeleteError("")
+                                                setInterviewToDelete(interview)
+                                            }}
                                         >
                                             <Trash2 className="h-4 w-4" />
                                         </Button>
@@ -368,48 +379,174 @@ function Interviews() {
                 </table>
             </div>
 
-            {/* NEW Delete Confirmation dialog */}
+            <Dialog
+                open={isDialogOpen}
+                onOpenChange={(open) => {
+                    if (!isSaving) setIsDialogOpen(open)
+                }}
+            >
+                <DialogContent className="max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {interviewToEdit ? "Edit Interview" : "Add Interview"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Choose an application and enter the interview details.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault()
+                            void handleSaveInterview()
+                        }}
+                    >
+                        <fieldset disabled={isSaving} className="grid gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="applicationId">Application</Label>
+                                <select
+                                    id="applicationId"
+                                    className={selectClass}
+                                    value={form.applicationId}
+                                    onChange={(event) =>
+                                        updateForm("applicationId", event.target.value)
+                                    }
+                                    required
+                                >
+                                    <option value="">Select an application</option>
+                                    {applications.map((application) => (
+                                        <option
+                                            key={application.id}
+                                            value={application.id}
+                                        >
+                                            {application.company} — {application.position}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="interviewType">Interview Type</Label>
+                                <select
+                                    id="interviewType"
+                                    className={selectClass}
+                                    value={form.interviewType}
+                                    onChange={(event) =>
+                                        updateForm("interviewType", event.target.value)
+                                    }
+                                    required
+                                >
+                                    <option value="">Select interview type</option>
+                                    {interviewTypes.map((type) => (
+                                        <option key={type} value={type}>
+                                            {type}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="date">Date</Label>
+                                    <Input
+                                        id="date"
+                                        type="date"
+                                        value={form.date}
+                                        onChange={(event) =>
+                                            updateForm("date", event.target.value)
+                                        }
+                                        required
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="time">Time</Label>
+                                    <Input
+                                        id="time"
+                                        type="time"
+                                        value={form.time}
+                                        onChange={(event) =>
+                                            updateForm("time", event.target.value)
+                                        }
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="notes">Notes</Label>
+                                <Input
+                                    id="notes"
+                                    value={form.notes}
+                                    onChange={(event) =>
+                                        updateForm("notes", event.target.value)
+                                    }
+                                    placeholder="Optional interview notes"
+                                />
+                            </div>
+
+                            {saveError && (
+                                <p role="alert" className="text-sm text-destructive">
+                                    {saveError}
+                                </p>
+                            )}
+
+                            <Button type="submit">
+                                {isSaving
+                                    ? "Saving..."
+                                    : interviewToEdit
+                                        ? "Save Changes"
+                                        : "Save Interview"}
+                            </Button>
+                        </fieldset>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             <Dialog
                 open={interviewToDelete !== null}
                 onOpenChange={(open) => {
-                    if (!open) {
+                    if (!open && !isDeleting) {
                         setInterviewToDelete(null)
+                        setDeleteError("")
                     }
                 }}
             >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Delete interview?</DialogTitle>
-
                         <DialogDescription>
-                            This will remove the interview with{" "}
-                            <strong>{interviewToDelete?.company}</strong>.
+                            Delete the interview with{" "}
+                            <strong>
+                                {interviewToDelete?.application.company}
+                            </strong>
+                            ? The application will remain.
                         </DialogDescription>
                     </DialogHeader>
+
+                    {deleteError && (
+                        <p role="alert" className="text-sm text-destructive">
+                            {deleteError}
+                        </p>
+                    )}
 
                     <div className="flex justify-end gap-2">
                         <Button
                             variant="outline"
+                            disabled={isDeleting}
                             onClick={() => setInterviewToDelete(null)}
                         >
                             Cancel
                         </Button>
-
                         <Button
                             variant="destructive"
-                            onClick={() => {
-                                if (interviewToDelete) {
-                                    handleDeleteInterview(interviewToDelete.id)
-                                    setInterviewToDelete(null)
-                                }
-                            }}
+                            disabled={isDeleting}
+                            onClick={() => void handleDeleteInterview()}
                         >
-                            Delete
+                            {isDeleting ? "Deleting..." : "Delete"}
                         </Button>
                     </div>
                 </DialogContent>
             </Dialog>
-
         </div>
     )
 }
