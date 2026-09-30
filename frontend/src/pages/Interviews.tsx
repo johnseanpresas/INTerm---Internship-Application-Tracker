@@ -12,7 +12,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 
-const API = "http://localhost:3000/api"
+const API = "/api"
 
 type Application = {
     id: number

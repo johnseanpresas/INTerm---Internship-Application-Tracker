@@ -1,4 +1,6 @@
 import "dotenv/config"
+import { Pool } from "pg"
+import { attachDatabasePool } from "@vercel/functions"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "../../generated/prisma/client"
 
@@ -8,12 +10,19 @@ if (!connectionString) {
     throw new Error("DATABASE_URL is not defined")
 }
 
-// PostgreSQL driver adapter used by Prisma to connect to the database.
-const adapter = new PrismaPg({
+const pool = new Pool({
     connectionString,
+    max: 5,
+    idleTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
 })
 
-// Prisma Client used throughout the backend.
+if (process.env.VERCEL === "1") {
+    attachDatabasePool(pool)
+}
+
+const adapter = new PrismaPg(pool)
+
 const prisma = new PrismaClient({
     adapter,
 })

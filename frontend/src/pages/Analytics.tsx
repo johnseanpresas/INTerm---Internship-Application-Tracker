@@ -65,7 +65,7 @@ function Analytics() {
 
             try {
                 const response = await fetch(
-                    "http://localhost:3000/api/applications",
+                    "/api/applications",
                     { signal: controller.signal }
                 )
 

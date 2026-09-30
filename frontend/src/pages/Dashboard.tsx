@@ -9,7 +9,7 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 
-const API = "http://localhost:3000/api"
+const API = "/api"
 
 const statuses = [
     "Saved",

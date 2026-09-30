@@ -47,7 +47,7 @@ function Companies() {
     useEffect(() => {
         async function loadCompanies() {
             try {
-                const response = await fetch("http://localhost:3000/api/companies")
+                const response = await fetch("/api/companies")
 
                 if (!response.ok) {
                     throw new Error("Failed to fetch companies")
@@ -100,8 +100,8 @@ function Companies() {
 
         try {
             const url = companyToEdit
-                ? `http://localhost:3000/api/companies/${companyToEdit.id}`
-                : "http://localhost:3000/api/companies"
+                ? `/api/companies/${companyToEdit.id}`
+                : "/api/companies"
 
             const response = await fetch(url, {
                 method: companyToEdit ? "PUT" : "POST",
@@ -153,7 +153,7 @@ function Companies() {
 
         try {
             const response = await fetch(
-                `http://localhost:3000/api/companies/${companyToDelete.id}`,
+                `/api/companies/${companyToDelete.id}`,
                 {
                     method: "DELETE",
                 }

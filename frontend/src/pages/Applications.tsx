@@ -37,7 +37,7 @@ function Applications() {
         async function fetchApplications() {
             try {
                 const response = await fetch(
-                    "http://localhost:3000/api/applications"
+                    "/api/applications"
                 )
 
                 if (!response.ok) {
@@ -109,7 +109,7 @@ function Applications() {
         if (applicationToEdit) {
             try {
                 const response = await fetch(
-                    `http://localhost:3000/api/applications/${applicationToEdit.id}`,
+                    `/api/applications/${applicationToEdit.id}`,
                     {
                         method: "PUT",
                         headers: {
@@ -175,7 +175,7 @@ function Applications() {
         // Create a new application using the current form values.
         // Date.now() is a temporary ID until the backend/database generates IDs.
         try {
-            const response = await fetch("http://localhost:3000/api/applications", {
+            const response = await fetch("/api/applications", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -252,7 +252,7 @@ function Applications() {
     async function handleDeleteApplication(id: number) {
         try {
             const response = await fetch(
-                `http://localhost:3000/api/applications/${id}`,
+                `/api/applications/${id}`,
                 {
                     method: "DELETE",
                 }

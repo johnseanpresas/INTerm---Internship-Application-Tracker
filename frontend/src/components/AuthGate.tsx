@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const AUTH_API = "http://localhost:3000/api/auth"
+const AUTH_API = "/api/auth"
 
 type User = {
     id: number
